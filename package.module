@@ -1,0 +1,153 @@
+<?php
+
+/**
+ * Implements hook_field_info().
+ */
+function package_field_info() {
+  return array(
+    'package' => array(
+      'label' => t('Package'),
+      'description' => t("This field allow user to create file package for files."),
+      'settings' => array(),
+      'default_widget' => 'package_textarea', // @todo Provide a more usable UI.
+      'default_formatter' => 'package_default',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_settings_form().
+ */
+function package_field_settings_form($field, $instance, $has_data) {
+  $settings = $field['settings'];
+
+  $form = array();
+
+  return $form;
+}
+
+function package_field_instance_settings_form() {
+
+}
+
+function package_field_is_empty($item, $field) {
+  if (
+    !empty($item['title'])
+    || !empty($item['description'])
+    || !empty($item['pack'])
+  ) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ *  Implements hook_field_widget_info().
+ */
+function package_field_widget_info() {
+  return array(
+    'package_textarea' => array(
+      'label' => t('Text area'),
+      'field types' => array('package'),
+      'settings' => array('rows' => 5),
+    ),
+  );
+}
+
+/**
+ *  Implements hook_field_presave().
+ */
+function package_field_presave($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  foreach ($items as $delta => $item) {
+    $pack_input = $item['pack'];
+    $items[$delta]['pack'] = serialize(explode(',', $pack_input));
+  }
+}
+
+/**
+ *  Implements hook_field_load().
+ */
+function package_field_load($entity_type, $entities, $field, $instances, $langcode, &$items, $age) {
+  foreach ($entities as $id => $entity) {
+    foreach ($items[$id] as $delta => $item) {
+      $pack = unserialize($item['pack']);
+      $items[$id][$delta]['pack'] = $pack;
+    }
+  }
+}
+
+/**
+ *  Implements hook_field_widget_form().
+ */
+function package_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $title = isset($items[$delta]['title']) ? $items[$delta]['title'] : '';
+  $description = isset($items[$delta]['description']) ? $items[$delta]['description'] : '';
+  $pack = isset($items[$delta]['pack']) ? $items[$delta]['pack'] : array();
+  $pack_input = implode(',', $pack);
+  $element['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#default_value' => $title,
+  );
+  $element['description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Description'),
+    '#default_value' => $description,
+    '#rows' => 3,
+  );
+  $element['pack'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Pack'),
+    '#default_value' => $pack_input,
+    '#rows' => $instance['widget']['settings']['rows'],
+    '#attributes' => array('class' => array('text-full')),
+  );
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function package_field_formatter_info() {
+  return array(
+    'package_default' => array(
+      'label' => t('Default'),
+      'field types' => array('package'),
+    ),
+  );
+}
+
+/**
+ *  Implements hook_field_formatter_view().
+ */
+function package_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+
+  foreach ($items as $delta => $item) {
+    $markup = '<div class="package">';
+    $markup .= "<h3>{$item['title']}</h3>";
+    $markup .= "<p>{$item['description']}</p>";
+    $markup .= "<ul>";
+    foreach ($item['pack'] as $fid) {
+      $file = file_load($fid);
+      //$markup .= "<li>{$file->filename}</li>";
+      $markup .= "<li>";
+      /*
+      $markup .= theme('file_entity_download_link', array(
+        'file' => $file,
+        'text' => $file->filename,
+      ));
+      */
+      $markup .= theme('file_link', array(
+        'file' => $file,
+      ));
+      $markup .= "</li>";
+    }
+    $markup .= "</ul>";
+    $markup .= "</div>";
+    $element[$delta]['#markup'] = $markup;
+  }
+
+  return $element;
+}

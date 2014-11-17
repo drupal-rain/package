@@ -1,0 +1,30 @@
+<?php
+
+/**
+ * Implements hook_field_schema().
+ */
+function package_field_schema($field) {
+  return array(
+    'columns' => array(
+      'title' => array(
+        'description' => 'The title of this package.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A description of the package.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'pack' => array(
+        'description' => 'Serialized data.',
+        'type' => 'text',
+        'size' => 'big',
+        'serialize' => TRUE,
+        'serialized default' => 'a:0:{}',
+      ),
+    ),
+  );
+}
