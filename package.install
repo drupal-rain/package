@@ -18,7 +18,7 @@ function package_field_schema($field) {
         'type' => 'text',
         'not null' => FALSE,
       ),
-      'pack' => array(
+      'package' => array(
         'description' => 'Serialized data.',
         'type' => 'text',
         'size' => 'big',

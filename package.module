@@ -1,153 +1,272 @@
 <?php
 
+require_once drupal_get_path('module', 'package') . '/package.field.inc';
+
+// -----------------------------------------------------------------------------
+// Hook
+
 /**
- * Implements hook_field_info().
+ *  Implements hook_element_info().
  */
-function package_field_info() {
+function package_element_info() {
   return array(
     'package' => array(
-      'label' => t('Package'),
-      'description' => t("This field allow user to create file package for files."),
-      'settings' => array(),
-      'default_widget' => 'package_textarea', // @todo Provide a more usable UI.
-      'default_formatter' => 'package_default',
+      '#input' => TRUE,
+      '#tree' => TRUE,
+      '#package' => package_element_default_settings(TRUE),
+      //'#value_callback' => 'form_type_package_dev_value',
+      '#process' => array('package_form_process'),
+      '#pre_render' => array('package_pre_render'),
+      '#default_value' => array(),
     ),
   );
 }
 
 /**
- * Implements hook_field_settings_form().
+ * Helper function to get 'package' element default settings.
  */
-function package_field_settings_form($field, $instance, $has_data) {
-  $settings = $field['settings'];
-
-  $form = array();
-
-  return $form;
+function package_element_default_settings($info = FALSE) {
+  return array(
+    'id' => $info ? NULL : drupal_html_id('package'),
+    'wrapper_id' => $info ? NULL : drupal_html_id('package-wrapper'),
+    'table_id' => $info ? NULL : drupal_html_id('package-table-id'),
+    'max_delta' => 100,
+    'options_list' => NULL,
+    'item_construct' => 'package_item_file',
+  );
 }
 
-function package_field_instance_settings_form() {
+// -----------------------------------------------------------------------------
+// Helper, Callback
 
+/**
+ * Value callback for 'package' element.
+ */
+function form_type_package_value($element, $input = FALSE, &$form_state) {
+  if ($input === FALSE) {
+    return $element['#default_value'];
+  }
+  if (!isset($form_state['triggering_element'])) {
+    return $element['#default_value'];
+  }
+  // NULL value when form is going to delete item.
+  if (!isset($input['pack'])) {
+    return array();
+  }
+
+  // dsm($input);
+  $value = $input['pack'];
+  // @todo @issue Multiple fields issue.
+  // Removed item
+  $removed = array();
+  foreach ($input['pack'] as $fid => $item) {
+    if (isset($item['remove']) || !isset($item['name'])) {
+      $removed[] = $fid;
+    }
+  }
+  foreach ($removed as $removed_fid) {
+    unset($value[$removed_fid]);
+  }
+
+  // New attached item
+  // @todo No Javascript.
+  $parents_check = array_slice($form_state['triggering_element']['#array_parents'], -2);
+  if ($parents_check[0] == 'attach' && $parents_check[1] = 'add' && $input['attach']['value'] > 0) {
+    $attach_fid = (int) $input['attach']['value'];
+    if (!array_key_exists($attach_fid, $value)) {
+      $value[$attach_fid] = package_file_item($input['attach']['value']);
+    }
+  }
+
+  return $value;
 }
 
-function package_field_is_empty($item, $field) {
-  if (
-    !empty($item['title'])
-    || !empty($item['description'])
-    || !empty($item['pack'])
-  ) {
+function package_value_filter($value, $key) {
+  if (in_array($key, array('attach', 'pack'))) {
     return FALSE;
   }
   return TRUE;
 }
 
-/**
- *  Implements hook_field_widget_info().
- */
-function package_field_widget_info() {
+function package_file_item($fid) {
+  $file = file_load($fid);
   return array(
-    'package_textarea' => array(
-      'label' => t('Text area'),
-      'field types' => array('package'),
-      'settings' => array('rows' => 5),
-    ),
+    'fid' => $fid,
+    'name' => $file->filename,
+    'description' => $file->filename,
   );
 }
 
 /**
- *  Implements hook_field_presave().
+ * 'process' callback for 'package' element.
  */
-function package_field_presave($entity_type, $entity, $field, $instance, $langcode, &$items) {
-  foreach ($items as $delta => $item) {
-    $pack_input = $item['pack'];
-    $items[$delta]['pack'] = serialize(explode(',', $pack_input));
-  }
-}
+function package_form_process($element, &$form_state, $complete_form) {
+  // Wrapper
+  $element += array(
+    '#prefix' => '<div id="' . $element['#package']['wrapper_id'] . '">',
+    '#suffix' => '</div>',
+  );
 
-/**
- *  Implements hook_field_load().
- */
-function package_field_load($entity_type, $entities, $field, $instances, $langcode, &$items, $age) {
-  foreach ($entities as $id => $entity) {
-    foreach ($items[$id] as $delta => $item) {
-      $pack = unserialize($item['pack']);
-      $items[$id][$delta]['pack'] = $pack;
+  $package = $element['#package'];
+
+  // Pack
+  $element['pack'] = array();
+  if (!$form_state['rebuild']) {
+    $weight = 0;
+    foreach ($element['#default_value'] as $id => $item) {
+      $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
+      $weight++;
     }
   }
-}
+  else {
+    $weight = 0;
+    foreach ($element['#value'] as $id => $item) {
+      $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
+      $weight++;
+    }
+  }
 
-/**
- *  Implements hook_field_widget_form().
- */
-function package_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
-  $title = isset($items[$delta]['title']) ? $items[$delta]['title'] : '';
-  $description = isset($items[$delta]['description']) ? $items[$delta]['description'] : '';
-  $pack = isset($items[$delta]['pack']) ? $items[$delta]['pack'] : array();
-  $pack_input = implode(',', $pack);
-  $element['title'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Title'),
-    '#default_value' => $title,
+  // Attach
+  $element['attach'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Attach new item'),
+    /*
+    '#attributes' => array(
+      'class' => array('form-inline'),
+    ),
+    */
   );
-  $element['description'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Description'),
-    '#default_value' => $description,
-    '#rows' => 3,
-  );
-  $element['pack'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Pack'),
-    '#default_value' => $pack_input,
-    '#rows' => $instance['widget']['settings']['rows'],
-    '#attributes' => array('class' => array('text-full')),
-  );
+  $options_list = array();
+  $options_list_callback = $element['#package']['options_list'];
+  if (isset($options_list_callback) && function_exists($options_list_callback)) {
+    $options_list = $options_list_callback($element, $form_state, $complete_form);
+  }
+  if (!empty($options_list)) {
+    $element['attach']['value'] = array(
+      '#type'          => 'select',
+      '#default_value' => '',
+      '#options'       => $options_list,
+      '#empty_value'   => 0,
+      '#title'         => t('Item id'),
+      '#title_display' => 'invisible',
+      // @todo Temporary solution, potential security issue.
+      // @link https://www.drupal.org/node/1231990
+      '#validated'     => TRUE,
+    );
+    $element['attach']['add'] = array(
+      '#type'  => 'button',
+      '#name'  => str_replace('-', '_', $package['id']) . '_attach_add',
+      '#value' => 'add',
+      '#ajax'  => array(
+        'callback' => 'package_ajax_attach_add',
+        'wrapper'  => $package['wrapper_id'],
+      ),
+    );
+  }
 
   return $element;
 }
 
 /**
- * Implements hook_field_formatter_info().
+ * A default callback to construct item, it can be override.
+ *
+ * @todo Solve field issue.
+ * @see package_field_item_file().
  */
-function package_field_formatter_info() {
-  return array(
-    'package_default' => array(
-      'label' => t('Default'),
-      'field types' => array('package'),
+function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
+  $item_file = array(
+    'fid'         => array(
+      '#markup' => check_plain($id),
+    ),
+    'name'        => array(
+      '#type'          => 'textfield',
+      '#default_value' => check_plain($item['name']),
+      '#size'          => 40,
+      '#maxlength'     => 255,
+    ),
+    'description' => array(
+      '#type'          => 'textfield',
+      '#default_value' => check_plain($item['description']),
+      '#size'          => 40,
+      '#maxlength'     => 255,
+    ),
+    'remove'      => array(
+      '#type'          => 'checkbox',
+      '#name'          => str_replace('-', '_', $element['#package']['id']) . '_' . $delta . '_item_remove',
+      '#ajax'          => array(
+        'callback' => 'package_ajax_item_remove',
+        'wrapper'  => $element['#package']['wrapper_id'],
+      ),
+    ),
+    'weight'      => array(
+      '#type'          => 'weight',
+      '#title'         => t('Weight'),
+      '#default_value' => $weight,
+      '#delta'         => $max_delta,
+      '#title_display' => 'invisible',
     ),
   );
+
+  return $item_file;
 }
 
 /**
- *  Implements hook_field_formatter_view().
+ * Helper function to get the 'package' element by 'triggering_element'.
  */
-function package_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
-  $element = array();
-
-  foreach ($items as $delta => $item) {
-    $markup = '<div class="package">';
-    $markup .= "<h3>{$item['title']}</h3>";
-    $markup .= "<p>{$item['description']}</p>";
-    $markup .= "<ul>";
-    foreach ($item['pack'] as $fid) {
-      $file = file_load($fid);
-      //$markup .= "<li>{$file->filename}</li>";
-      $markup .= "<li>";
-      /*
-      $markup .= theme('file_entity_download_link', array(
-        'file' => $file,
-        'text' => $file->filename,
-      ));
-      */
-      $markup .= theme('file_link', array(
-        'file' => $file,
-      ));
-      $markup .= "</li>";
-    }
-    $markup .= "</ul>";
-    $markup .= "</div>";
-    $element[$delta]['#markup'] = $markup;
-  }
+function package_form_get_element($form, $form_state, $depth) {
+  $array_parents = $form_state['triggering_element']['#array_parents'];
+  $array_parents = array_slice($array_parents, 0, $depth);
+  $element = drupal_array_get_nested_value($form, $array_parents);
 
   return $element;
+}
+
+/**
+ * Ajax callback.
+ */
+function package_ajax_attach_add($form, &$form_state) {
+  $element = package_form_get_element($form, $form_state, -2);
+
+  return $element;
+}
+
+/**
+ * Ajax callback.
+ */
+function package_ajax_item_remove($form, &$form_state) {
+  $element = package_form_get_element($form, $form_state, -3);
+
+  return $element;
+}
+
+/**
+ * 'pre_render' callback for 'package' element.
+ */
+function package_pre_render($elements) {
+  $rows = array();
+  foreach (element_children($elements['pack']) as $id) {
+    $elements['pack'][$id]['weight']['#attributes']['class'] = array('package-pack-item-weight');
+    $rows[] = array(
+      'data' => array(
+        drupal_render($elements['pack'][$id]['fid']),
+        drupal_render($elements['pack'][$id]['name']),
+        drupal_render($elements['pack'][$id]['description']),
+        drupal_render($elements['pack'][$id]['remove']),
+        drupal_render($elements['pack'][$id]['weight']),
+      ),
+      'class' => array('draggable'),
+    );
+  }
+  $header = array(t('fid'), t('Name'), t('Description'), t('Remove'), t('Weight'));
+  $table_id = $elements['#package']['table_id'];
+  $output = theme('table', array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array('id' => $table_id),
+  ));
+  drupal_add_tabledrag($table_id, 'order', 'sibling', 'package-pack-item-weight');
+
+  $elements['pack']['#children'] = $output;
+
+  return $elements;
 }
