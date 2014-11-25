@@ -125,12 +125,12 @@ function package_field_load($entity_type, $entities, $field, $instances, $langco
  *  Implements hook_field_widget_form().
  */
 function package_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $element += (array) $element;
+
   $title = isset($items[$delta]['title']) ? $items[$delta]['title'] : NULL;
   $description = isset($items[$delta]['description']) ? $items[$delta]['description'] : NULL;
   $package = isset($items[$delta]['package']) ? $items[$delta]['package'] : NULL;
 
-  // @todo Retain the Field API properties.
-  //$element['package'] = (array) $element;
   $element['title'] = array(
     '#type' => 'textfield',
     '#title' => t('Title'),
@@ -155,7 +155,6 @@ function package_field_widget_form(&$form, &$form_state, $field, $instance, $lan
         '#default_value' => $default_value,
       );
       $element['package']['#package']['options_list'] = 'package_field_attach_options_list';
-      $element['package']['#package']['item_construct'] = 'package_field_item_file';
       break;
     case 'package_textarea':
       if ($package) {
@@ -174,20 +173,7 @@ function package_field_widget_form(&$form, &$form_state, $field, $instance, $lan
       break;
   }
 
-  $form['#submit'][] = 'package_field_widget_form_submit';
-
   return $element;
-}
-
-function package_field_widget_form_submit($form, &$form_state) {
-  /*
-  if () {
-    drupal_array_set_nested_value($form_state['values'], $form_state['triggering_element']['#array_parents'], TRUE);
-    drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
-
-    $form_state['rebuild'] = TRUE;
-  }
-  */
 }
 
 /**
@@ -274,57 +260,4 @@ function package_field_entity_file_usage($entity_type, $entity) {
     ->fetchCol();
 
   return $result;
-}
-
-/**
- * A default callback to construct item, it can be override.
- */
-function package_field_item_file($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
-  $parents = array_slice($element['#parents'], 1);
-  $name = $element['#parents'][0] . '[' . implode('][', $parents) . '][pack][' . $id . ']';
-  $item_file = array(
-    'id'         => array(
-      '#markup' => check_plain($id),
-    ),
-    'name'        => array(
-      '#type'          => 'textfield',
-      '#default_value' => check_plain($item['name']),
-      '#size'          => 40,
-      '#maxlength'     => 255,
-    ),
-    'description' => array(
-      '#type'          => 'textfield',
-      '#default_value' => check_plain($item['description']),
-      '#size'          => 40,
-      '#maxlength'     => 255,
-    ),
-    'remove'      => array(
-      '#type'          => 'submit',
-      '#name'          => $name . '[remove]',
-      '#value'         => t('Remove'),
-      '#submit'        => array('package_field_item_remove_submit'),
-      '#ajax'          => array(
-        'callback' => 'package_item_remove_ajax',
-        'wrapper'  => $element['#package']['wrapper_id'],
-      ),
-    ),
-    'weight'      => array(
-      '#type'          => 'weight',
-      '#title'         => t('Weight'),
-      '#default_value' => $weight,
-      '#delta'         => $max_delta,
-      '#title_display' => 'invisible',
-    ),
-  );
-
-  return $item_file;
-}
-
-function package_field_item_remove_submit($elements, &$form_state) {
-  //watchdog('package_field_item_remove_submit', t('Through here?'));
-  //watchdog('package_field_item_remove_submit', print_r($form_state['triggering_element'], TRUE));
-  drupal_array_set_nested_value($form_state['values'], $form_state['triggering_element']['#array_parents'], TRUE);
-  drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
-
-  $form_state['rebuild'] = TRUE;
 }

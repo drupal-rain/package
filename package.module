@@ -40,19 +40,9 @@ function package_element_default_settings($info = FALSE) {
 // Helper, Callback
 
 /**
- * Value callback for 'package' element.
+ * Value callback for 'package' element, prepare the '#value' property.
  */
 function form_type_package_value($element, $input = FALSE, &$form_state) {
-  /*
-  if ($form_state['rebuild']) {
-    watchdog('form_type_package_value:Rebuild', t('Rebuilding'));
-    watchdog('form_type_package_value:$input', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
-    //watchdog('form_type_package_value:$form_state', t('<pre>@print_r</pre>', array('@print_r' => print_r($form_state, TRUE))));
-  }
-  */
-  //watchdog('form_type_package_value:$input', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
-  //watchdog('form_type_package_value:$form_state', t('<pre>@print_r</pre>', array('@print_r' => print_r($form_state, TRUE))));
-  //if ($input === FALSE || !isset($form_state['triggering_element'])) {
   if ($input === FALSE) {
     if (isset($element['#value'])) {
       return $element['#value'];
@@ -70,23 +60,8 @@ function form_type_package_value($element, $input = FALSE, &$form_state) {
   $value = $input['pack'];
 
   if (isset($form_state['triggering_element'])) {
-
-    // dsm($input);
-    //watchdog('form_type_package_value:$value', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
-    // @todo Issue: Button disappear in $form, I need to bypass the remove in this stage, and use the submit value to remove.
     // Removed item
     $removed = array();
-    /*
-    $package = drupal_array_get_nested_value($form_state['values'], $element['#parents']);
-    if ($package) {
-      //watchdog('form_type_package_value:$package', t('<pre>@print_r</pre>', array('@print_r' => print_r($package, TRUE))));
-      foreach ($package['pack'] as $id => $item) {
-        if ($item['remove'] === TRUE) {
-          $removed[] = $id;
-        }
-      }
-    }
-    */
     foreach ($input['pack'] as $id => $item) {
       if (
         (isset($item['remove']) && $item['remove'] === TRUE)
@@ -99,8 +74,7 @@ function form_type_package_value($element, $input = FALSE, &$form_state) {
       unset($value[$removed_id]);
     }
 
-    // New attached item
-    // @todo No Javascript.
+    // New attached item, only action if click 'Add' button.
     $parents_check = array_slice($form_state['triggering_element']['#array_parents'], -2);
     if ($parents_check[0] == 'attach' && $parents_check[1] = 'add' && $input['attach']['value'] > 0) {
       $attach_id = (int) $input['attach']['value'];
@@ -108,10 +82,7 @@ function form_type_package_value($element, $input = FALSE, &$form_state) {
         $value[$attach_id] = package_file_item($input['attach']['value']);
       }
     }
-
   }
-
-  //watchdog('form_type_package_value:$value', t('<pre>@print_r</pre>', array('@print_r' => print_r($value, TRUE))));
 
   return $value;
 }
@@ -146,17 +117,7 @@ function form_process_package($element, &$form_state, &$complete_form) {
 
   // Pack
   $element['pack'] = array();
-  // This condition cause issue on removing item by ajax if it's newly added.
-  /*
-  if (!$form_state['rebuild']) {
-    $element_value = $element['#default_value'];
-  }
-  else {
-    $element_value = $element['#value'];
-  }
-  */
   $element_value = $element['#value'];
-  // watchdog('form_process_package:$element_value', t('<pre>@print_r</pre>', array('@print_r' => print_r($element_value, TRUE))));
   $weight = 0;
   foreach ($element_value as $id => $item) {
     $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
@@ -202,8 +163,6 @@ function form_process_package($element, &$form_state, &$complete_form) {
     );
   }
 
-  //watchdog('form_process_package:$element', t('<pre>@print_r</pre>', array('@print_r' => print_r($element, TRUE))));
-
   return $element;
 }
 
@@ -214,6 +173,8 @@ function form_process_package($element, &$form_state, &$complete_form) {
  * @see package_field_item_file().
  */
 function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
+  $parents = array_slice($element['#parents'], 1);
+  $name = $element['#parents'][0] . '[' . implode('][', $parents) . '][pack][' . $id . ']';
   $item_file = array(
     'id'         => array(
       '#markup' => check_plain($id),
@@ -231,8 +192,10 @@ function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $f
       '#maxlength'     => 255,
     ),
     'remove'      => array(
-      '#type'          => 'checkbox',
-      '#name'          => str_replace('-', '_', $element['#package']['id']) . '_' . $delta . '_item_remove',
+      '#type'          => 'submit',
+      '#name'          => $name . '[remove]',
+      '#value'         => t('Remove'),
+      '#submit'        => array('package_item_file_remove_submit'),
       '#ajax'          => array(
         'callback' => 'package_item_remove_ajax',
         'wrapper'  => $element['#package']['wrapper_id'],
@@ -248,6 +211,16 @@ function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $f
   );
 
   return $item_file;
+}
+
+/**
+ * Submit callback for remove button.
+ */
+function package_item_file_remove_submit($elements, &$form_state) {
+  drupal_array_set_nested_value($form_state['values'], $form_state['triggering_element']['#array_parents'], TRUE);
+  drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
+
+  $form_state['rebuild'] = TRUE;
 }
 
 /**
