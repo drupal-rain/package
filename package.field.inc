@@ -174,7 +174,20 @@ function package_field_widget_form(&$form, &$form_state, $field, $instance, $lan
       break;
   }
 
+  $form['#submit'][] = 'package_field_widget_form_submit';
+
   return $element;
+}
+
+function package_field_widget_form_submit($form, &$form_state) {
+  /*
+  if () {
+    drupal_array_set_nested_value($form_state['values'], $form_state['triggering_element']['#array_parents'], TRUE);
+    drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
+
+    $form_state['rebuild'] = TRUE;
+  }
+  */
 }
 
 /**
@@ -270,7 +283,7 @@ function package_field_item_file($id, $item, $delta, $max_delta, $weight, $eleme
   $parents = array_slice($element['#parents'], 1);
   $name = $element['#parents'][0] . '[' . implode('][', $parents) . '][pack][' . $id . ']';
   $item_file = array(
-    'fid'         => array(
+    'id'         => array(
       '#markup' => check_plain($id),
     ),
     'name'        => array(
@@ -291,7 +304,7 @@ function package_field_item_file($id, $item, $delta, $max_delta, $weight, $eleme
       '#value'         => t('Remove'),
       '#submit'        => array('package_field_item_remove_submit'),
       '#ajax'          => array(
-        'callback' => 'package_ajax_item_remove',
+        'callback' => 'package_item_remove_ajax',
         'wrapper'  => $element['#package']['wrapper_id'],
       ),
     ),
@@ -307,7 +320,11 @@ function package_field_item_file($id, $item, $delta, $max_delta, $weight, $eleme
   return $item_file;
 }
 
-function package_field_item_remove_submit($form, &$form_state) {
+function package_field_item_remove_submit($elements, &$form_state) {
+  //watchdog('package_field_item_remove_submit', t('Through here?'));
+  //watchdog('package_field_item_remove_submit', print_r($form_state['triggering_element'], TRUE));
+  drupal_array_set_nested_value($form_state['values'], $form_state['triggering_element']['#array_parents'], TRUE);
   drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
+
   $form_state['rebuild'] = TRUE;
 }

@@ -15,7 +15,7 @@ function package_element_info() {
       '#tree' => TRUE,
       '#package' => package_element_default_settings(TRUE),
       //'#value_callback' => 'form_type_package_dev_value',
-      '#process' => array('package_form_process'),
+      '#process' => array('form_process_package'),
       '#pre_render' => array('package_pre_render'),
       '#default_value' => array(),
     ),
@@ -43,40 +43,75 @@ function package_element_default_settings($info = FALSE) {
  * Value callback for 'package' element.
  */
 function form_type_package_value($element, $input = FALSE, &$form_state) {
+  /*
+  if ($form_state['rebuild']) {
+    watchdog('form_type_package_value:Rebuild', t('Rebuilding'));
+    watchdog('form_type_package_value:$input', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
+    //watchdog('form_type_package_value:$form_state', t('<pre>@print_r</pre>', array('@print_r' => print_r($form_state, TRUE))));
+  }
+  */
+  //watchdog('form_type_package_value:$input', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
+  //watchdog('form_type_package_value:$form_state', t('<pre>@print_r</pre>', array('@print_r' => print_r($form_state, TRUE))));
+  //if ($input === FALSE || !isset($form_state['triggering_element'])) {
   if ($input === FALSE) {
-    return $element['#default_value'];
+    if (isset($element['#value'])) {
+      return $element['#value'];
+    }
+    else {
+      return $element['#default_value'];
+    }
   }
-  if (!isset($form_state['triggering_element'])) {
-    return $element['#default_value'];
-  }
-  // NULL value when form is going to delete item.
-  if (!isset($input['pack'])) {
+
+  // NULL value when form is going to delete item or it's a real empty.
+  if (!isset($input['pack']) && $input['attach']['value'] == 0) {
     return array();
   }
 
-  // dsm($input);
   $value = $input['pack'];
-  // @todo @issue Multiple fields issue.
-  // Removed item
-  $removed = array();
-  foreach ($input['pack'] as $fid => $item) {
-    if (isset($item['remove']) || !isset($item['name'])) {
-      $removed[] = $fid;
+
+  if (isset($form_state['triggering_element'])) {
+
+    // dsm($input);
+    //watchdog('form_type_package_value:$value', t('<pre>@print_r</pre>', array('@print_r' => print_r($input, TRUE))));
+    // @todo Issue: Button disappear in $form, I need to bypass the remove in this stage, and use the submit value to remove.
+    // Removed item
+    $removed = array();
+    /*
+    $package = drupal_array_get_nested_value($form_state['values'], $element['#parents']);
+    if ($package) {
+      //watchdog('form_type_package_value:$package', t('<pre>@print_r</pre>', array('@print_r' => print_r($package, TRUE))));
+      foreach ($package['pack'] as $id => $item) {
+        if ($item['remove'] === TRUE) {
+          $removed[] = $id;
+        }
+      }
     }
-  }
-  foreach ($removed as $removed_fid) {
-    unset($value[$removed_fid]);
+    */
+    foreach ($input['pack'] as $id => $item) {
+      if (
+        (isset($item['remove']) && $item['remove'] === TRUE)
+        || (!isset($item['name']) && !isset($item['description']))
+      ) {
+        $removed[] = $id;
+      }
+    }
+    foreach ($removed as $removed_id) {
+      unset($value[$removed_id]);
+    }
+
+    // New attached item
+    // @todo No Javascript.
+    $parents_check = array_slice($form_state['triggering_element']['#array_parents'], -2);
+    if ($parents_check[0] == 'attach' && $parents_check[1] = 'add' && $input['attach']['value'] > 0) {
+      $attach_id = (int) $input['attach']['value'];
+      if (!array_key_exists($attach_id, $value)) {
+        $value[$attach_id] = package_file_item($input['attach']['value']);
+      }
+    }
+
   }
 
-  // New attached item
-  // @todo No Javascript.
-  $parents_check = array_slice($form_state['triggering_element']['#array_parents'], -2);
-  if ($parents_check[0] == 'attach' && $parents_check[1] = 'add' && $input['attach']['value'] > 0) {
-    $attach_fid = (int) $input['attach']['value'];
-    if (!array_key_exists($attach_fid, $value)) {
-      $value[$attach_fid] = package_file_item($input['attach']['value']);
-    }
-  }
+  //watchdog('form_type_package_value:$value', t('<pre>@print_r</pre>', array('@print_r' => print_r($value, TRUE))));
 
   return $value;
 }
@@ -100,7 +135,7 @@ function package_file_item($fid) {
 /**
  * 'process' callback for 'package' element.
  */
-function package_form_process($element, &$form_state, $complete_form) {
+function form_process_package($element, &$form_state, &$complete_form) {
   // Wrapper
   $element += array(
     '#prefix' => '<div id="' . $element['#package']['wrapper_id'] . '">',
@@ -111,19 +146,21 @@ function package_form_process($element, &$form_state, $complete_form) {
 
   // Pack
   $element['pack'] = array();
+  // This condition cause issue on removing item by ajax if it's newly added.
+  /*
   if (!$form_state['rebuild']) {
-    $weight = 0;
-    foreach ($element['#default_value'] as $id => $item) {
-      $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
-      $weight++;
-    }
+    $element_value = $element['#default_value'];
   }
   else {
-    $weight = 0;
-    foreach ($element['#value'] as $id => $item) {
-      $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
-      $weight++;
-    }
+    $element_value = $element['#value'];
+  }
+  */
+  $element_value = $element['#value'];
+  // watchdog('form_process_package:$element_value', t('<pre>@print_r</pre>', array('@print_r' => print_r($element_value, TRUE))));
+  $weight = 0;
+  foreach ($element_value as $id => $item) {
+    $element['pack'][$id] = $package['item_construct']($id, $item, $weight, $package['max_delta'], $weight, $element, $form_state, $complete_form);
+    $weight++;
   }
 
   // Attach
@@ -154,15 +191,18 @@ function package_form_process($element, &$form_state, $complete_form) {
       '#validated'     => TRUE,
     );
     $element['attach']['add'] = array(
-      '#type'  => 'button',
+      '#type'  => 'submit',
       '#name'  => str_replace('-', '_', $package['id']) . '_attach_add',
-      '#value' => 'add',
+      '#value' => t('Add'),
+      '#submit' => array('package_attach_add_submit'),
       '#ajax'  => array(
-        'callback' => 'package_ajax_attach_add',
+        'callback' => 'package_attach_add_ajax',
         'wrapper'  => $package['wrapper_id'],
       ),
     );
   }
+
+  //watchdog('form_process_package:$element', t('<pre>@print_r</pre>', array('@print_r' => print_r($element, TRUE))));
 
   return $element;
 }
@@ -175,7 +215,7 @@ function package_form_process($element, &$form_state, $complete_form) {
  */
 function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
   $item_file = array(
-    'fid'         => array(
+    'id'         => array(
       '#markup' => check_plain($id),
     ),
     'name'        => array(
@@ -194,7 +234,7 @@ function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $f
       '#type'          => 'checkbox',
       '#name'          => str_replace('-', '_', $element['#package']['id']) . '_' . $delta . '_item_remove',
       '#ajax'          => array(
-        'callback' => 'package_ajax_item_remove',
+        'callback' => 'package_item_remove_ajax',
         'wrapper'  => $element['#package']['wrapper_id'],
       ),
     ),
@@ -224,16 +264,20 @@ function package_form_get_element($form, $form_state, $depth) {
 /**
  * Ajax callback.
  */
-function package_ajax_attach_add($form, &$form_state) {
+function package_attach_add_ajax($form, &$form_state) {
   $element = package_form_get_element($form, $form_state, -2);
 
   return $element;
 }
 
+function package_attach_add_submit($form, &$form_state) {
+  $form_state['rebuild'] = TRUE;
+}
+
 /**
  * Ajax callback.
  */
-function package_ajax_item_remove($form, &$form_state) {
+function package_item_remove_ajax($form, &$form_state) {
   $element = package_form_get_element($form, $form_state, -3);
 
   return $element;
@@ -248,7 +292,7 @@ function package_pre_render($elements) {
     $elements['pack'][$id]['weight']['#attributes']['class'] = array('package-pack-item-weight');
     $rows[] = array(
       'data' => array(
-        drupal_render($elements['pack'][$id]['fid']),
+        drupal_render($elements['pack'][$id]['id']),
         drupal_render($elements['pack'][$id]['name']),
         drupal_render($elements['pack'][$id]['description']),
         drupal_render($elements['pack'][$id]['remove']),
@@ -257,7 +301,7 @@ function package_pre_render($elements) {
       'class' => array('draggable'),
     );
   }
-  $header = array(t('fid'), t('Name'), t('Description'), t('Remove'), t('Weight'));
+  $header = array(t('ID'), t('Name'), t('Description'), t('Remove'), t('Weight'));
   $table_id = $elements['#package']['table_id'];
   $output = theme('table', array(
     'header' => $header,
