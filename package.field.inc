@@ -27,11 +27,14 @@ function package_field_widget_info() {
       'label' => t('Visual table'),
       'field types' => array('package'),
     ),
+    // @todo
+    /*
     'package_textarea' => array(
       'label' => t('Text area'),
       'field types' => array('package'),
       'settings' => array('rows' => 5),
     ),
+    */
   );
 }
 
