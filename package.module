@@ -87,6 +87,9 @@ function form_type_package_value($element, $input = FALSE, &$form_state) {
   return $value;
 }
 
+/**
+ * Filter useless meta items.
+ */
 function package_value_filter($value, $key) {
   if (in_array($key, array('attach', 'pack'))) {
     return FALSE;

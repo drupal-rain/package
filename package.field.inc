@@ -97,7 +97,12 @@ function package_field_presave($entity_type, $entity, $field, $instance, $langco
   switch ($instance['widget']['type']) {
     case 'package_table':
       foreach ($items as $delta => $item) {
-        $pack_input = array_filter($item['package'], 'package_value_filter', ARRAY_FILTER_USE_BOTH);
+        // @issue Only works in PHP 5.6
+        // @temporary Unset index.
+        //$pack_input = array_filter($item['package'], 'package_value_filter', ARRAY_FILTER_USE_BOTH);
+        $pack_input = $item['package'];
+        unset($pack_input['attach']);
+        unset($pack_input['pack']);
         $items[$delta]['package'] = serialize($pack_input);
       }
       break;
