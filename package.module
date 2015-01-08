@@ -1,9 +1,56 @@
 <?php
 
-require_once drupal_get_path('module', 'package') . '/package.field.inc';
+// =============================================================================
+// Theme
+
+/**
+ * Implements hook_theme().
+ */
+function package_theme() {
+  return array(
+    'package_download_item' => array(
+      'render element' => 'element',
+      'template' => 'package_download_item',
+    ),
+  );
+}
+
+/**
+ * Template default preprocess for 'package_download_item'.
+ */
+function template_preprocess_package_download_item(&$vars) {
+  $element = $vars['element'];
+  $item = $element['#item'];
+  $settings = $element['#settings'];
+
+  $vars['title'] = $item['title'];
+  $vars['description'] = $item['description'];
+  $vars['display'] = $item['display'];
+
+  // $files_list
+  if ($settings['files']) {
+    $rows = array();
+    foreach ($item['package'] as $fid => $package_item) {
+      $file = file_load($fid);
+      $rows[] = array(
+        $file->timestamp,
+        $file->filename,
+        $file->filesize,
+      );
+    }
+    $vars['files_table'] = theme('table', array(
+      'header' => array(t('Date'), t('File'), t('Size')),
+      'rows' => $rows,
+    ));
+  }
+
+}
+
+// =============================================================================
+// Package element
 
 // -----------------------------------------------------------------------------
-// Hook
+// Element Definition
 
 /**
  *  Implements hook_element_info().
@@ -18,48 +65,52 @@ function package_element_info() {
       '#process' => array('form_process_package'),
       '#pre_render' => array('package_pre_render'),
       '#default_value' => array(),
+      '#element_validate' => array('package_element_validate'),
     ),
   );
 }
 
 /**
- * Helper function to get 'package' element default settings.
+ * Helper function to get 'package' element default settings which is filled in #package property.
  */
 function package_element_default_settings($info = FALSE) {
   return array(
     'id' => $info ? NULL : drupal_html_id('package'),
     'wrapper_id' => $info ? NULL : drupal_html_id('package-wrapper'),
     'table_id' => $info ? NULL : drupal_html_id('package-table-id'),
+    // For 'pack'
     'max_delta' => 100,
-    'options_list' => NULL,
-    'item_construct' => 'package_item_file',
+    'item_value' => 'package_item_file_value', // Callback of the format of single item value in pack is saved.
+    'item_construct' => 'package_item_file_construct', // Callback to construct item into the package table row
+    // For 'attach'
+    'options_list' => NULL, // The source list of items to attach to the package
   );
 }
 
 // -----------------------------------------------------------------------------
-// Helper, Callback
+// Element Callback
 
 /**
  * Value callback for 'package' element, prepare the '#value' property.
+ *
+ * Deal with the ajax interaction at the same time.
  */
 function form_type_package_value($element, $input = FALSE, &$form_state) {
-  if ($input === FALSE) {
-    if (isset($element['#value'])) {
-      return $element['#value'];
-    }
-    else {
-      return $element['#default_value'];
-    }
+  if (!$input) {
+    return NULL;
   }
 
   // NULL value when form is going to delete item or it's a real empty.
   if (!isset($input['pack']) && $input['attach']['value'] == 0) {
     return array();
   }
-
   $value = $input['pack'];
 
+  // Ajax interaction
   if (isset($form_state['triggering_element'])) {
+    // Settings
+    $package = $element['#package'];
+
     // Removed item
     $removed = array();
     foreach ($input['pack'] as $id => $item) {
@@ -79,31 +130,12 @@ function form_type_package_value($element, $input = FALSE, &$form_state) {
     if ($parents_check[0] == 'attach' && $parents_check[1] = 'add' && $input['attach']['value'] > 0) {
       $attach_id = (int) $input['attach']['value'];
       if (!array_key_exists($attach_id, $value)) {
-        $value[$attach_id] = package_file_item($input['attach']['value']);
+        $value[$attach_id] = $package['item_value']($input['attach']['value']);
       }
     }
   }
 
   return $value;
-}
-
-/**
- * Filter useless meta items.
- */
-function package_value_filter($value, $key) {
-  if (in_array($key, array('attach', 'pack'))) {
-    return FALSE;
-  }
-  return TRUE;
-}
-
-function package_file_item($fid) {
-  $file = file_load($fid);
-  return array(
-    'fid' => $fid,
-    'name' => $file->filename,
-    'description' => $file->filename,
-  );
 }
 
 /**
@@ -116,9 +148,11 @@ function form_process_package($element, &$form_state, &$complete_form) {
     '#suffix' => '</div>',
   );
 
+  // Settings
   $package = $element['#package'];
 
-  // Pack
+  // Pack container
+  // It's not the final product, the '#pre_render' will produce the proper result.
   $element['pack'] = array();
   $element_value = $element['#value'];
   $weight = 0;
@@ -127,7 +161,7 @@ function form_process_package($element, &$form_state, &$complete_form) {
     $weight++;
   }
 
-  // Attach
+  // Attach form
   $element['attach'] = array(
     '#type' => 'fieldset',
     '#title' => t('Attach new item'),
@@ -170,12 +204,67 @@ function form_process_package($element, &$form_state, &$complete_form) {
 }
 
 /**
- * A default callback to construct item, it can be override.
- *
- * @todo Solve field issue.
- * @see package_field_item_file().
+ * 'pre_render' callback for 'package' element.
  */
-function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
+function package_pre_render($elements) {
+  $rows = array();
+  foreach (element_children($elements['pack']) as $id) {
+    $elements['pack'][$id]['weight']['#attributes']['class'] = array('package-pack-item-weight');
+    $rows[] = array(
+      'data' => array(
+        drupal_render($elements['pack'][$id]['id']),
+        drupal_render($elements['pack'][$id]['name']),
+        drupal_render($elements['pack'][$id]['description']),
+        drupal_render($elements['pack'][$id]['remove']),
+        drupal_render($elements['pack'][$id]['weight']),
+      ),
+      'class' => array('draggable'),
+    );
+  }
+  $header = array(t('ID'), t('Name'), t('Description'), t('Remove'), t('Weight'));
+  $table_id = $elements['#package']['table_id'];
+  $output = theme('table', array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array('id' => $table_id),
+  ));
+  drupal_add_tabledrag($table_id, 'order', 'sibling', 'package-pack-item-weight');
+
+  // Make the table under 'pack' realm
+  $elements['pack']['#children'] = $output;
+
+  return $elements;
+}
+
+/**
+ * Callback for #element_validate, unset 'pack', 'attach' garbage values because the '#tree'.
+ */
+function package_element_validate($element, &$form_state) {
+  $value = drupal_array_get_nested_value($form_state['values'], $element['#parents']);
+  unset($value['pack']);
+  unset($value['attach']);
+  drupal_array_set_nested_value($form_state['values'], $element['#parents'], $value);
+}
+
+// -----------------------------------------------------------------------------
+// Callback
+
+/**
+ * A default callback for pack item value, it can be override.
+ */
+function package_item_file_value($fid) {
+  $file = file_load($fid);
+  return array(
+    'fid' => $fid,
+    'name' => $file->filename,
+    'description' => $file->filename,
+  );
+}
+
+/**
+ * A default callback to construct item value into table row, it can be override.
+ */
+function package_item_file_construct($id, $item, $delta, $max_delta, $weight, $element, $form_state, $complete_form) {
   $parents = array_slice($element['#parents'], 1);
   $name = $element['#parents'][0] . '[' . implode('][', $parents) . '][pack][' . $id . ']';
   $item_file = array(
@@ -217,6 +306,43 @@ function package_item_file($id, $item, $delta, $max_delta, $weight, $element, $f
 }
 
 /**
+ * Callback to get the options list for attach form.
+ */
+function package_field_attach_options_list($element, &$form_state, $complete_form) {
+  // Initiate
+  if (!$form_state['rebuild']) {
+    $value = $element['#default_value'];
+  }
+  else {
+    $value = $element['#value'];
+  }
+
+  // Collect existing items in the pack
+  $ids_exist = array();
+  foreach ($value as $id => $item) {
+    $ids_exist[] = $id;
+  }
+
+  // Ignore field ui demo form in the settings.
+  if (!isset($complete_form['#entity'])) {
+    $ids_available = array();
+  }
+  else {
+    $ids_available = package_field_entity_file_usage($complete_form['#entity_type'], $complete_form['#entity']);
+  }
+
+  // Differ the available and existing.
+  $ids = array_diff($ids_available, $ids_exist);
+  $options = array();
+  foreach ($ids as $id) {
+    $file = file_load($id);
+    $options[$id] = $file->filename;
+  }
+
+  return $options;
+}
+
+/**
  * Submit callback for remove button.
  */
 function package_item_file_remove_submit($elements, &$form_state) {
@@ -224,17 +350,6 @@ function package_item_file_remove_submit($elements, &$form_state) {
   drupal_array_set_nested_value($form_state['input'], $form_state['triggering_element']['#array_parents'], TRUE);
 
   $form_state['rebuild'] = TRUE;
-}
-
-/**
- * Helper function to get the 'package' element by 'triggering_element'.
- */
-function package_form_get_element($form, $form_state, $depth) {
-  $array_parents = $form_state['triggering_element']['#array_parents'];
-  $array_parents = array_slice($array_parents, 0, $depth);
-  $element = drupal_array_get_nested_value($form, $array_parents);
-
-  return $element;
 }
 
 /**
@@ -250,43 +365,47 @@ function package_attach_add_submit($form, &$form_state) {
   $form_state['rebuild'] = TRUE;
 }
 
-/**
- * Ajax callback.
- */
 function package_item_remove_ajax($form, &$form_state) {
   $element = package_form_get_element($form, $form_state, -3);
 
   return $element;
 }
 
+// -----------------------------------------------------------------------------
+// Helper
+
 /**
- * 'pre_render' callback for 'package' element.
+ * Filter useless meta items.
  */
-function package_pre_render($elements) {
-  $rows = array();
-  foreach (element_children($elements['pack']) as $id) {
-    $elements['pack'][$id]['weight']['#attributes']['class'] = array('package-pack-item-weight');
-    $rows[] = array(
-      'data' => array(
-        drupal_render($elements['pack'][$id]['id']),
-        drupal_render($elements['pack'][$id]['name']),
-        drupal_render($elements['pack'][$id]['description']),
-        drupal_render($elements['pack'][$id]['remove']),
-        drupal_render($elements['pack'][$id]['weight']),
-      ),
-      'class' => array('draggable'),
-    );
+function package_value_filter($value, $key) {
+  if (in_array($key, array('attach', 'pack'))) {
+    return FALSE;
   }
-  $header = array(t('ID'), t('Name'), t('Description'), t('Remove'), t('Weight'));
-  $table_id = $elements['#package']['table_id'];
-  $output = theme('table', array(
-    'header' => $header,
-    'rows' => $rows,
-    'attributes' => array('id' => $table_id),
-  ));
-  drupal_add_tabledrag($table_id, 'order', 'sibling', 'package-pack-item-weight');
+  return TRUE;
+}
 
-  $elements['pack']['#children'] = $output;
+/**
+ * Helper function to get the 'package' element by 'triggering_element'.
+ */
+function package_form_get_element($form, $form_state, $depth) {
+  $array_parents = $form_state['triggering_element']['#array_parents'];
+  $array_parents = array_slice($array_parents, 0, $depth);
+  $element = drupal_array_get_nested_value($form, $array_parents);
 
-  return $elements;
+  return $element;
+}
+
+/**
+ * Helper function to get the files attached to this entity.
+ */
+function package_field_entity_file_usage($entity_type, $entity) {
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+  $result = db_select('file_usage', 'fu')
+    ->fields('fu', array('fid'))
+    ->condition('type', $entity_type)
+    ->condition('id', $id)
+    ->execute()
+    ->fetchCol();
+
+  return $result;
 }
