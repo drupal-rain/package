@@ -51,14 +51,17 @@ class package_download extends Field_Formatter\Field_Formatter_Abstract {
   }
 
   public static function view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+    $element = array();
     foreach ($items as $delta => $item) {
-      $element[$delta] = array(
-        '#theme' => 'package_download_item',
-        '#entity_type' => $entity_type,
-        '#entity' => $entity,
-        '#item' => $item,
-        '#settings' => $display['settings'],
-      );
+      if ($item['display']) {
+        $element[$delta] = array(
+          '#theme' => 'package_download_item',
+          '#entity_type' => $entity_type,
+          '#entity' => $entity,
+          '#item' => $item,
+          '#settings' => $display['settings'],
+        );
+      }
     }
 
     return $element;

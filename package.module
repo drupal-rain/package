@@ -1,50 +1,10 @@
 <?php
 
-// =============================================================================
-// Theme
-
 /**
- * Implements hook_theme().
+ * @file Package module.
  */
-function package_theme() {
-  return array(
-    'package_download_item' => array(
-      'render element' => 'element',
-      'template' => 'package_download_item',
-    ),
-  );
-}
 
-/**
- * Template default preprocess for 'package_download_item'.
- */
-function template_preprocess_package_download_item(&$vars) {
-  $element = $vars['element'];
-  $item = $element['#item'];
-  $settings = $element['#settings'];
-
-  $vars['title'] = $item['title'];
-  $vars['description'] = $item['description'];
-  $vars['display'] = $item['display'];
-
-  // $files_list
-  if ($settings['files']) {
-    $rows = array();
-    foreach ($item['package'] as $fid => $package_item) {
-      $file = file_load($fid);
-      $rows[] = array(
-        $file->timestamp,
-        $file->filename,
-        $file->filesize,
-      );
-    }
-    $vars['files_table'] = theme('table', array(
-      'header' => array(t('Date'), t('File'), t('Size')),
-      'rows' => $rows,
-    ));
-  }
-
-}
+require_once 'package.theme.inc';
 
 // =============================================================================
 // Package element
